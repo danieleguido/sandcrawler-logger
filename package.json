@@ -22,6 +22,7 @@
   "homepage": "https://github.com/Yomguithereal/sandcrawler-logger",
   "dependencies": {
     "winston": "~0.8.1",
-    "chalk": "~0.5.1"
+    "chalk": "~0.5.1",
+    "moment": "^2.9.0"
   }
 }

@@ -6,8 +6,9 @@
  * for debugging and monitoring purposes.
  */
 var winston = require('winston'),
-    util = require('util'),
-    chalk = require('chalk');
+    util    = require('util'),
+    chalk   = require('chalk')
+    moment  = require('moment');
 
 // Helpers
 function rs(string, nb) {
@@ -68,6 +69,79 @@ SandcrawlerLogger.prototype.log = function(level, msg, meta, callback) {
 };
 
 /**
+ * Custom Stopwatch. Can be upgraded with moments.js
+ */
+var Stopwatch = function() {
+  var s = this;
+  
+  s.elapsed  = 0;
+  s.starting = 0;
+  s.expected = 0;
+  s.delay    = 0;
+
+  s.steps    = [];
+  s.delays   = [];
+
+  s.overall  = {};
+
+  s.reset = function() {
+    s.elapsed  = 0;
+    s.starting = 0;
+    s.expected = 0;
+    s.delay    = 0;
+
+    s.steps    = [];
+    s.delays   = [];
+  };
+
+  s.start = function() {
+    s.starting = new Date();
+    if(s.delay)
+      s.delays.push(s.starting - s.delay);
+  }
+
+  s.stop = function() {
+    s.elapsed = (new Date()) - s.starting;
+    s.steps.push(s.elapsed);
+    s.delay = new Date();
+  }
+
+  // computate single start/stop avg
+  s.overall.average = function() {
+    return s.overall.delay() / (s.delays.length || 1) + s.overall.steps() / (s.steps.length || 1);
+  }
+
+  // sum total delay and total steps
+  s.overall.delay = function() {
+    var sum = 0;
+    for(var i = 0; i < s.delays.length; i++)
+      sum += s.delays[i];
+    return sum;
+  }
+
+  s.overall.steps = function() {
+    var sum = 0;
+    for(var i = 0; i < s.steps.length; i++)
+      sum += s.steps[i];
+    return sum;
+  }
+
+  s.overall.elapsed = function() {
+    s.overall.steps() + s.overall.delay();
+  }
+
+  s.remaining = function(remains) {
+    return remains * average();
+  }
+
+  s.humanize = function(milliseconds) {
+    var duration = moment.duration(milliseconds);
+    return duration.humanize();
+  }
+}
+
+
+/**
  * Plugin
  */
 module.exports = function(opts) {
@@ -87,9 +161,12 @@ module.exports = function(opts) {
       ]
     });
 
+    // timer
+    var stopwatch = new Stopwatch();
+
     // Assigning the logger to the scraper instance
     this.logger = log;
-
+    console.log(scraper.index, scraper.settings.params)
     // Scraper level listeners
     scraper.once('scraper:start', function() {
       log.info('Starting...');
@@ -116,12 +193,15 @@ module.exports = function(opts) {
 
     // Job level listeners
     scraper.on('job:scrape', function(job) {
+      stopwatch.start();
       log.info('Scraping ' + highlightUrl(job.req.url));
     });
 
     scraper.on('job:success', function(job) {
-      log.info('Job ' + highlightUrl(job.req.url) +
-               ' completed ' + chalk.green('successfully.'));
+      stopwatch.stop();
+      log.info('Job ' + highlightUrl(job.req.url) + chalk.green('successfully completed in', stopwatch.humanize(stopwatch.elapsed), '(', stopwatch.elapsed / 1000,'s )'));
+      log.info('Job completion avg', chalk.yellow(stopwatch.humanize(stopwatch.overall.average()), '(',stopwatch.overall.average() / 1000,')'));
+      // gimme remainings!
     });
 
     scraper.on('job:fail', function(err, job) {
